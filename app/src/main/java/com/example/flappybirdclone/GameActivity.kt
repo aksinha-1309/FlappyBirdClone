@@ -1,23 +1,15 @@
 package com.example.flappybirdclone
 
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-// import com.google.android.gms.ads.AdRequest
-// import com.google.android.gms.ads.LoadAdError
-// import com.google.android.gms.ads.MobileAds
-// import com.google.android.gms.ads.interstitial.InterstitialAd
-// import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
-// import com.google.android.gms.ads.rewarded.RewardedAd
-// import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.startapp.sdk.adsbase.StartAppAd
+import com.startapp.sdk.adsbase.adlisteners.VideoListener
+import com.startapp.sdk.adsbase.Ad
+import com.startapp.sdk.adsbase.adlisteners.AdEventListener
 
 class GameActivity : AppCompatActivity() {
-
-    // private var interstitialAd: InterstitialAd? = null
-    // private var rewardedAd: RewardedAd? = null
-    // private val TAG = "AdMobGameActivity"
 
     private lateinit var gameView: GameView
 
@@ -25,30 +17,66 @@ class GameActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 1. Mobile Ads SDK को Initialize करें (डिसेबल)
-        // MobileAds.initialize(this) {}
-
-        // 2. बैकग्राउंड में दोनों एड्स लोड करना शुरू करें (डिसेबल)
-        // loadInterstitialAd()
-        // loadRewardedAd()
-
         gameView = GameView(this)
         setContentView(gameView)
     }
 
-    // --- Interstitial Ad लोड करने का फंक्शन (डिसेबल) ---
-    fun loadInterstitialAd() {}
+    // 3 बार गेम ओवर पर Interstitial Ad दिखाएं
+    fun checkAndShowInterstitialOnGameOver() {
+        MainActivity.gameOverCounter++
 
-    // --- Interstitial Ad दिखाने का फंक्शन (डिसेबल) ---
-    fun showInterstitialAd() {}
+        if (MainActivity.gameOverCounter % 3 == 0) {
+            val interstitialAd = MainActivity.preloadedInterstitialAd
+            if (interstitialAd != null && interstitialAd.isReady) {
+                interstitialAd.showAd()
+            } else {
+                val fallbackAd = StartAppAd(this)
+                fallbackAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                    override fun onReceiveAd(ad: Ad) {
+                        fallbackAd.showAd()
+                    }
+                    override fun onFailedToReceiveAd(ad: Ad?) {}
+                })
+            }
+            MainActivity.preloadedInterstitialAd = StartAppAd(this)
+            MainActivity.preloadedInterstitialAd?.loadAd(StartAppAd.AdMode.AUTOMATIC)
+        }
+    }
 
-    // --- Rewarded Ad लोड करने का फंक्शन (डिसेबल) ---
-    fun loadRewardedAd() {}
-
-    // --- Rewarded Ad दिखाने का फंक्शन ---
+    // Rewarded Ad विद स्मार्ट बैकअप (क्विज़ ऐप वाला लॉजिक)
     fun showRewardedAd(onRewardEarned: () -> Unit) {
-        // बिना रुकावट के सीधे रिवॉर्ड/रिवाइव एक्शन दें
-        Toast.makeText(this, "Game Continued.", Toast.LENGTH_SHORT).show()
-        onRewardEarned()
+        val adToPlay = MainActivity.preloadedRewardedAd
+
+        // 1st Priority: अगर असली Rewarded Ad ready है, तो वही चलाओ (ज़्यादा कमाई)
+        if (adToPlay != null && adToPlay.isReady) {
+            adToPlay.setVideoListener(object : VideoListener {
+                override fun onVideoCompleted() {
+                    runOnUiThread {
+                        onRewardEarned()
+                        MainActivity.preloadedRewardedAd = StartAppAd(this@GameActivity)
+                        MainActivity.preloadedRewardedAd?.loadAd(StartAppAd.AdMode.REWARDED_VIDEO)
+                    }
+                }
+            })
+            adToPlay.showAd()
+        } else {
+            // 2nd Priority (Backup): अगर वीडियो फेल हो जाए, तो बैकअप के लिए Normal Ad चलाकर रिवाइव कर दो
+            val backupAd = StartAppAd(this)
+            backupAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                override fun onReceiveAd(ad: Ad) {
+                    backupAd.showAd()
+                    onRewardEarned() // यूज़र को रिवाइव कर दो
+                }
+                override fun onFailedToReceiveAd(ad: Ad?) {
+                    // अगर दोनों ही फेल हो जाएं, तब भी यूज़र को गेम खेलने दो
+                    Toast.makeText(this@GameActivity, "Ad not available, reviving...", Toast.LENGTH_SHORT).show()
+                    onRewardEarned()
+                }
+            })
+
+            // साथ ही बैकग्राउंड में अगला Rewarded Ad लोड होने रख दो
+            MainActivity.preloadedRewardedAd = StartAppAd(this)
+            MainActivity.preloadedRewardedAd?.loadAd(StartAppAd.AdMode.REWARDED_VIDEO)
+        }
     }
 }

@@ -32,25 +32,29 @@ class GameView(context: Context) : View(context), Runnable {
     private var jumpSound = 0
     private var gameOverSound = 0
 
-    // --- आपकी पुरानी Physics Values (जैसा आपने बनाया था) ---[span_2](start_span)[span_2](end_span)
+    // --- बैलेंस्ड Classic Physics (ना बहुत तेज गिरेगी, ना उड़ेगी) ---
     private var birdX = 200f
     private var birdY = 500f
     private var birdRadius = 45f
     private var velocity = 0f
-    private val gravity = 2f           // आपकी ओरिजिनल Gravity[span_3](start_span)[span_3](end_span)
-    private val jumpStrength = -25f     // आपकी ओरिजिनल Jump Strength[span_4](start_span)[span_4](end_span)
+    // स्क्रीन हाइट के हिसाब से डायनेमिक वैल्यू, जो बिल्कुल तेरे पसंदीदा 1.50f और -21f जैसी ही फीलिंग देगी
+
 
     // Screen Dimensions for Pipe & Bird Scaling
     val displayMetrics = resources.displayMetrics
     val screenWidth = displayMetrics.widthPixels.toFloat()
     val screenHeight = displayMetrics.heightPixels.toFloat()
+    // स्क्रीन हाइट के हिसाब से डायनेमिक वैल्यू, जो बिल्कुल तेरे पसंदीदा 1.50f और -21f जैसी ही फीलिंग देगी
+    private val gravity = screenHeight * 0.00065f
+    private val jumpStrength = -(screenHeight * 0.009f)
 
     // Pipes variables
     val pipeWidth = screenWidth * 0.18f
-    val pipeGap = screenHeight * 0.26f
-    private var pipeX = 1800f          // आपकी ओरिजिनल Pipe Position[span_5](start_span)[span_5](end_span)
-    private var topPipeHeight = 500f   // आपकी ओरिजिनल Height[span_6](start_span)[span_6](end_span)
-    private var pipeSpeed = 15f        // आपकी ओरिजिनल Pipe Speed[span_7](start_span)[span_7](end_span)
+    var pipeGap = screenHeight * 0.22f
+    private val minPipeGap = screenHeight * 0.16f // न्यूनतम गैप लिमिट (नया जोड़ ले)
+    private var pipeX = 1800f
+    private var topPipeHeight = 500f
+    private var pipeSpeed = 13f        // पाइप की स्पीड को भी थोड़ा बैलेंस्ड किया
     private val random = Random()
 
     private var score = 0
@@ -122,15 +126,19 @@ class GameView(context: Context) : View(context), Runnable {
             playGameOverSound()
             checkHighScore()
             isGameOver = true
+
+            // यहाँ हर 3 गेम ओवर पर इंटरस्टिशियल ऐड दिखाने वाला लॉजिक कॉल किया गया है
+            if (context is GameActivity) {
+                (context as GameActivity).checkAndShowInterstitialOnGameOver()
+            }
         }
     }
-
     private fun update() {
         velocity += gravity
         birdY += velocity
 
         if (height > 0 && birdY >= height - birdRadius) {
-            birdY = (height - birdRadius)
+            birdY = (height - birdRadius).toFloat()
             handleGameOverLogic()
         }
         if (birdY <= birdRadius) {
@@ -138,10 +146,24 @@ class GameView(context: Context) : View(context), Runnable {
             velocity = 0f
         }
 
+        // 1. स्कोर बढ़ने के साथ स्पीड धीरे-धीरे बढ़ेगी
+        pipeSpeed = (screenHeight * 0.006f) + (score * 0.25f).coerceAtMost(6f)
+
+        // 2. स्कोर बढ़ने के साथ गैप धीरे-धीरे सिमटेगा
+        pipeGap = (screenHeight * 0.22f - (score * 3f)).coerceAtLeast(minPipeGap)
+
         pipeX -= pipeSpeed
         if (pipeX < -pipeWidth) {
             pipeX = screenWidth + 300f
-            topPipeHeight = (random.nextInt(400) + 200).toFloat()
+
+            // 3. पाइप्स की हाइट अब ज़्यादा ऊपर-नीचे नहीं भटकेगी,
+            // यह स्क्रीन के बीच में रहेगी और केवल हल्का-फुल्का वेरिएशन देगी।
+            val centerHeight = screenHeight * 0.35f
+            val variation = screenHeight * 0.12f
+            val minH = (centerHeight - variation).toInt()
+            val maxH = (centerHeight + variation).toInt()
+            topPipeHeight = (random.nextInt(maxH - minH) + minH).toFloat()
+
             score++
         }
 
